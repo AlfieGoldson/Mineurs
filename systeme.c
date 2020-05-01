@@ -19,9 +19,8 @@
 #define TRAVAILLE 1
 
 int sem_set;
-int num_processus;
 char *etat_mineur;
-int mineur, pioche, pelle;
+int mineurs, pioches, pelles;
 
 // Initialisation d'un Sémaphore.
 void sem_init(int sem, int val)
@@ -56,46 +55,44 @@ void sem_signal(int sem)
 // Vérifie si un certain mineur peut travailler.
 _Bool travail_mineur(int m)
 {
-    return etat_mineur[m] == ATTENTE && pioche > 0 && pelle > 0;
+    return etat_mineur[m] == ATTENTE && pioches > 0 && pelles > 0;
 }
 
 // Commence le travail d'un Mineur
-void commence_travail(int m)
+void commence_travail(int mineur_id)
 {
-    etat_mineur[m] = TRAVAILLE;
-    sem_signal(m);
-    pioche--;
-    pelle--;
+    etat_mineur[mineur_id] = TRAVAILLE;
+    sem_signal(mineur_id);
+    pioches--;
+    pelles--;
 }
 
-void attente_travail()
+void attente_travail(int mineur_id)
 {
-    sem_wait(mineur);
-    printf("Le mineur %d prend une pelle et une pioche.\n", num_processus);
-    etat_mineur[num_processus] = ATTENTE;
-    if (travail_mineur(num_processus))
-        commence_travail(num_processus);
-    sem_signal(mineur);
-    sem_wait(num_processus);
+    sem_wait(mineurs);
+    printf("Le mineur %d prend une pelle et une pioche.\n", mineur_id);
+    etat_mineur[mineur_id] = ATTENTE;
+    if (travail_mineur(mineur_id))
+        commence_travail(mineur_id);
+    sem_signal(mineurs);
+    sem_wait(mineur_id);
 }
 
-void stop_travail()
+void stop_travail(int mineur_id)
 {
-    sem_wait(mineur);
-    etat_mineur[num_processus] = ATTENTE;
-    sem_signal(mineur);
-    printf("Le mineur %d rend une pelle et une pioche\n", num_processus);
-    printf("Le Mineur %d a fini de travailler! (%d)\n", num_processus, getpid());
-    pioche++;
-    pelle++;
+    sem_wait(mineurs);
+    etat_mineur[mineur_id] = ATTENTE;
+    sem_signal(mineurs);
+    pioches++;
+    pelles++;
     exit(0);
 }
 
-void fils()
+void fils(int mineur_id)
 {
     srand(time(NULL) ^ (getpid() << 16));
 
-    for (int i = 1; i < mineur; i++)
+    for (int i = 1; i < mineurs; i++)
     {
         int r, r2, or, h;
         or = rand() % (1000 - 1) + 1;
@@ -109,19 +106,19 @@ void fils()
             sleep(1);
             printf(
                 "Mineur %d | h%d > Attends avant de travailler (encore %dh).\n",
-                num_processus,
+                mineur_id,
                 h,
                 r - j);
             h++;
         }
-        attente_travail();
+        attente_travail(mineur_id);
 
         for (int j = 0; j < r2; j++)
         {
             sleep(1);
             printf(
                 "Mineur %d | h%d > Travaille (encore %dh).\n",
-                num_processus,
+                mineur_id,
                 h,
                 r2 - j);
             h++;
@@ -129,29 +126,32 @@ void fils()
 
         printf(
             "\n--- Mineur %d | h%d > %dg d'Or Extrait ---\n\n",
-            num_processus,
+            mineur_id,
             h,
             or);
 
-        stop_travail();
+        // printf("Le mineur %d rend une pelle et une pioche\n", m);
+        // printf("Le Mineur %d a fini de travailler! (%d)\n", m, getpid());
+
+        stop_travail(mineur_id);
     }
 }
 
 int main()
 {
     printf("Combien de mineurs , pioches et pelles ?\n");
-    scanf("%d %d %d", &mineur, &pioche, &pelle);
+    scanf("%d %d %d", &mineurs, &pioches, &pelles);
 
-    printf("# %d Mineurs | %d Pioches | %d Pelles\n", mineur, pioche, pelle);
+    printf("# %d Mineurs | %d Pioches | %d Pelles\n", mineurs, pioches, pelles);
 
     int shmid;
-    shmid = shmget(IPC_PRIVATE, mineur, IPC_CREAT | 0660); // Creation memoire partagee
+    shmid = shmget(IPC_PRIVATE, mineurs, IPC_CREAT | 0660); // Creation memoire partagee
     etat_mineur = (char *)shmat(shmid, NULL, 0);
 
     int pid;
 
     // Creation des semaphores, le dernier est le mutex
-    sem_set = semget(IPC_PRIVATE, mineur + 1, IPC_CREAT | 0660);
+    sem_set = semget(IPC_PRIVATE, mineurs + 1, IPC_CREAT | 0660);
     if (sem_set == -1)
     {
         printf("Erreur de memoire partagee\n");
@@ -160,17 +160,18 @@ int main()
 
     // On initialise tout les semaphores
     int i;
-    for (i = 0; i < mineur; i++)
+    for (i = 0; i < mineurs; i++)
         sem_init(i, 0); // On initialise les semaphores a 0
     // printf("%d", i);
     sem_init(i, 1);
 
     // A la creation tout les mineurs attendent pour travailler
-    for (i = 0; i < mineur; i++)
+    for (i = 0; i < mineurs; i++)
         etat_mineur[i] = ATTENTE;
 
     // On cree les differents mineurs
-    for (num_processus = 1; num_processus <= mineur; num_processus++)
+    int num_processus;
+    for (num_processus = 1; num_processus <= mineurs; num_processus++)
     {
         pid = fork();
         if (pid == 0)
@@ -180,7 +181,7 @@ int main()
     if (pid == 0)
     {
         printf("Creation du mineur %d (%d)\n", num_processus, getpid());
-        fils();
+        fils(num_processus);
     }
     else if (pid < 0)
     {
@@ -189,7 +190,7 @@ int main()
     }
     else
     {
-        for (int i = 1; i <= mineur; i++)
+        for (int i = 1; i <= mineurs; i++)
         {
             waitpid(-1, NULL, 0); // On attend que tout les processus fils se terminent
         }
