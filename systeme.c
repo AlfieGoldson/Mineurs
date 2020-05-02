@@ -11,6 +11,12 @@
 #define ATTENTE 0
 #define TRAVAILLE 1
 
+#define ANSI_COLOR_RESET "\x1b[0m"
+#define ANSI_COLOR_RED "\x1b[31m"
+#define ANSI_COLOR_GREEN "\x1b[32m"
+#define ANSI_COLOR_GOLD "\x1b[33m"
+#define ANSI_COLOR_BLUE "\x1b[34m"
+
 int sem_set;
 char *etat_mineur;
 int mineurs, pioches, pelles;
@@ -27,10 +33,10 @@ void fils(int mineur_id);
 
 int main()
 {
-    printf("Combien de mineurs , pioches et pelles ?\n");
+    printf(ANSI_COLOR_RESET "Combien de mineurs , pioches et pelles ?\n");
     scanf("%d %d %d", &mineurs, &pioches, &pelles);
 
-    printf("---   %d Mineurs | %d Pioches | %d Pelles   ---\n", mineurs, pioches, pelles);
+    printf(ANSI_COLOR_RESET "---   %d Mineurs | %d Pioches | %d Pelles   ---\n", mineurs, pioches, pelles);
 
     // Création Memoire Partagée
     int shmid = shmget(IPC_PRIVATE, mineurs, IPC_CREAT | 0660);
@@ -40,41 +46,32 @@ int main()
 
     // Creation des Sémaphores, le dernier est le Mutex
     sem_set = semget(IPC_PRIVATE, mineurs + 1, IPC_CREAT | 0660);
-    if (sem_set == -1)
-    {
-        printf("Erreur de mémoire partagée.\n");
+
+    if (sem_set == -1) // Erreur de mémoire partagée.
         exit(1);
-    }
 
     // On initialise tout les semaphores
-    int i;
-    for (i = 0; i < mineurs; i++)
+    for (int i = 0; i < mineurs; i++)
         sem_init(i, 0); // On initialise les semaphores a 0
-    sem_init(i, 1);
+    sem_init(mineurs, 1);
 
     // A la creation tout les mineurs attendent pour travailler
-    for (i = 0; i < mineurs; i++)
+    for (int i = 0; i < mineurs; i++)
         etat_mineur[i] = ATTENTE;
 
     // Création des différents mineurs
-    int num_processus;
-    for (num_processus = 1; num_processus <= mineurs; num_processus++)
+    for (int num_processus = 1; num_processus <= mineurs; num_processus++)
     {
         pid = fork();
+        if (pid < 0)
+            exit(1);
         if (pid == 0)
-            break;
+            fils(num_processus);
     }
 
-    if (pid == 0)
-        fils(num_processus);
-    else if (pid < 0)
-    {
-        printf("Erreur de fork\n");
-        exit(1);
-    }
-    else
-        for (int i = 1; i <= mineurs; i++)
-            waitpid(-1, NULL, 0); // On attend que tout les processus fils se terminent
+    // Attente de la terminaison de tous les processus fils
+    for (int i = 1; i <= mineurs; i++)
+        waitpid(-1, NULL, 0);
 
     return 0;
 }
@@ -122,7 +119,8 @@ void commence_travail(int mineur_id)
     sem_signal(mineur_id);
     pioches--;
     pelles--;
-    printf("Mineur %d > Prends 1 Pelle et 1 Pioche (Reste %d pelles et %d pioches).\n", mineur_id, pelles, pioches);
+    printf(ANSI_COLOR_BLUE "Mineur %d > ", mineur_id);
+    printf(ANSI_COLOR_RESET "Prends 1 Pelle et 1 Pioche (Reste %d pelles et %d pioches).\n", pelles, pioches);
 }
 
 void attente_travail(int mineur_id)
@@ -149,7 +147,7 @@ void fils(int mineur_id)
 {
     srand(time(NULL) ^ (getpid() << 16));
 
-    printf("\n---\n| Creation du mineur %d (%d)\n---\n\n", mineur_id, getpid());
+    printf(ANSI_COLOR_GREEN "\n>>> Creation du mineur %d (%d) <<<\n\n", mineur_id, getpid());
 
     for (int i = 1; i < mineurs; i++)
     {
@@ -158,18 +156,19 @@ void fils(int mineur_id)
         r = rand() % (5 - 1) + 1;
         r2 = rand() % (5 - 1) + 1;
 
-        printf("Mineur %d > Attends %dh avant de travailler.\n", mineur_id, r);
+        printf(ANSI_COLOR_BLUE "Mineur %d > ", mineur_id);
+        printf(ANSI_COLOR_RESET "Attends %dh avant de travailler.\n", r);
         sleep(r);
         attente_travail(mineur_id);
 
-        printf(
-            "Mineur %d > Travaille (encore %dh).\n", mineur_id, r2);
+        printf(ANSI_COLOR_BLUE "Mineur %d > ", mineur_id);
+        printf(ANSI_COLOR_RESET "Travaille (encore %dh).\n", r2);
         sleep(r);
 
-        printf(
-            "\n---   Mineur %d > %dg d'Or Extrait   ---\n\n",
-            mineur_id,
-            or);
+        printf(ANSI_COLOR_GOLD
+               "\n---   Mineur %d > %dg d'Or Extrait   ---\n\n",
+               mineur_id,
+               or);
 
         stop_travail(mineur_id);
     }
